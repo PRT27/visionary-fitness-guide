@@ -1,5 +1,4 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import MainLayout from '@/components/MainLayout';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -32,41 +31,102 @@ const FitnessTracking = () => {
   const [dailyGoal] = useState(10000);
   const [elapsedTime, setElapsedTime] = useState(0);
   const { toast } = useToast();
+  
+  const accelDataRef = useRef({ x: 0, y: 0, z: 0 });
+  const prevAccelDataRef = useRef({ x: 0, y: 0, z: 0 });
+  const stepTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastStepTimeRef = useRef(0);
+  
+  const STEP_THRESHOLD = 10.0;
+  const MIN_STEP_INTERVAL = 250;
 
-  // Mock timer for workout tracking
   useEffect(() => {
-    let timer: NodeJS.Timeout;
+    if ('DeviceMotionEvent' in window) {
+      console.log('Device motion is available');
+    } else {
+      console.log('Device motion is NOT available');
+      toast({
+        title: "Sensor Unavailable",
+        description: "Your device doesn't support motion detection. Using simulation mode instead.",
+      });
+    }
     
-    if (isTracking) {
-      timer = setInterval(() => {
-        setElapsedTime(prev => prev + 1);
-        
-        // Simulate steps & stats increasing during tracking
-        setSteps(prev => Math.min(prev + Math.floor(Math.random() * 5) + 1, dailyGoal));
-        setDistance(prev => prev + 0.002);
+    const pageAnnouncement = document.getElementById('page-announcement');
+    if (pageAnnouncement) {
+      pageAnnouncement.textContent = 'Fitness tracking page loaded. Press start tracking to begin.';
+    }
+  }, [toast]);
+
+  useEffect(() => {
+    if (!isTracking) return;
+    
+    const handleMotion = (event: DeviceMotionEvent) => {
+      if (!event.accelerationIncludingGravity) return;
+      
+      const { x, y, z } = event.accelerationIncludingGravity;
+      if (x === null || y === null || z === null) return;
+      
+      prevAccelDataRef.current = { ...accelDataRef.current };
+      accelDataRef.current = { x: x || 0, y: y || 0, z: z || 0 };
+      
+      const deltaX = accelDataRef.current.x - prevAccelDataRef.current.x;
+      const deltaY = accelDataRef.current.y - prevAccelDataRef.current.y;
+      const deltaZ = accelDataRef.current.z - prevAccelDataRef.current.z;
+      
+      const magnitude = Math.sqrt(deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ);
+      
+      const now = Date.now();
+      if (magnitude > STEP_THRESHOLD && (now - lastStepTimeRef.current) > MIN_STEP_INTERVAL) {
+        setSteps(prev => prev + 1);
+        setDistance(prev => prev + 0.0008);
         setCalories(prev => prev + 0.05);
-        setHeartRate(75 + Math.floor(Math.random() * 15));
+        lastStepTimeRef.current = now;
+        
         setActiveTime(prev => prev + 1);
         
-        // Announce progress milestones
         if (steps % 1000 === 0 && steps > 0) {
           announceProgress();
+        }
+      }
+    };
+    
+    const timer = setInterval(() => {
+      setElapsedTime(prev => prev + 1);
+      
+      setHeartRate(70 + Math.floor(Math.random() * 15));
+    }, 1000);
+    
+    if ('DeviceMotionEvent' in window) {
+      window.addEventListener('devicemotion', handleMotion);
+      console.log('Device motion event listener added');
+    } else {
+      stepTimeoutRef.current = setInterval(() => {
+        if (Math.random() > 0.7) {
+          setSteps(prev => prev + 1);
+          setDistance(prev => prev + 0.0008);
+          setCalories(prev => prev + 0.05);
+          setActiveTime(prev => prev + 1);
+          
+          if (steps % 1000 === 0 && steps > 0) {
+            announceProgress();
+          }
         }
       }, 1000);
     }
     
     return () => {
-      if (timer) clearInterval(timer);
+      if ('DeviceMotionEvent' in window) {
+        window.removeEventListener('devicemotion', handleMotion);
+        console.log('Device motion event listener removed');
+      }
+      
+      if (stepTimeoutRef.current) {
+        clearInterval(stepTimeoutRef.current);
+      }
+      
+      clearInterval(timer);
     };
-  }, [isTracking, steps, dailyGoal]);
-
-  // Initial page load announcement for screen readers
-  useEffect(() => {
-    const pageAnnouncement = document.getElementById('page-announcement');
-    if (pageAnnouncement) {
-      pageAnnouncement.textContent = 'Fitness tracking page loaded. Press start tracking to begin.';
-    }
-  }, []);
+  }, [isTracking, steps]);
 
   const toggleTracking = () => {
     setIsTracking(!isTracking);
@@ -77,7 +137,6 @@ const FitnessTracking = () => {
         description: "Your activity is now being recorded",
       });
       
-      // Announce for screen readers
       speakText("Fitness tracking started. Your steps, distance, and calories are now being tracked.");
     } else {
       toast({
@@ -120,7 +179,6 @@ const FitnessTracking = () => {
 
   const speakText = (text: string) => {
     if ('speechSynthesis' in window) {
-      // Cancel any ongoing speech
       window.speechSynthesis.cancel();
       
       const utterance = new SpeechSynthesisUtterance(text);
@@ -431,6 +489,19 @@ const FitnessTracking = () => {
               </div>
             </CardContent>
           </Card>
+        </div>
+        
+        <div className="mt-8 p-4 border rounded-md bg-accent/5">
+          <div className="text-center">
+            <h3 className="text-lg font-medium">Developer Information</h3>
+            <p className="text-sm mt-2">VisionFit - An open source application</p>
+            <p className="text-sm mt-1">Created by Nhlanhla Percy Thwala</p>
+            <p className="text-sm text-muted-foreground mt-1">Ermelo, Mpumalanga, South Africa, 2332</p>
+            <div className="flex justify-center gap-4 mt-2">
+              <p className="text-sm">Email: nhlanhlathwala27@gmail.com</p>
+              <p className="text-sm">Contact: +27767255361</p>
+            </div>
+          </div>
         </div>
       </div>
     </MainLayout>

@@ -12,12 +12,14 @@ import { useToast } from '@/components/ui/use-toast';
 const ObjectDetection = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [detectedObjects, setDetectedObjects] = useState<string[]>([]);
   const [confidenceThreshold, setConfidenceThreshold] = useState(0.6);
   const [autoRead, setAutoRead] = useState(true);
   const [activeTab, setActiveTab] = useState('object');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -27,6 +29,12 @@ const ObjectDetection = () => {
       pageAnnouncement.textContent = 'Object detection page loaded. Camera access required.';
     }
 
+    // Check if getUserMedia is supported
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setCameraError("Your browser doesn't support camera access");
+      console.error("getUserMedia is not supported in this browser");
+    }
+
     return () => {
       stopCamera();
     };
@@ -34,9 +42,13 @@ const ObjectDetection = () => {
 
   const startCamera = async () => {
     try {
+      setCameraError(null);
+      
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         throw new Error("Media devices API not supported");
       }
+      
+      console.log('Requesting camera access...');
       
       // Try getting all available cameras first
       const devices = await navigator.mediaDevices.enumerateDevices();
@@ -47,7 +59,7 @@ const ObjectDetection = () => {
       const constraints = { 
         audio: false,
         video: { 
-          facingMode: 'environment',
+          facingMode: { ideal: 'environment' },
           width: { ideal: 1280 },
           height: { ideal: 720 },
           frameRate: { ideal: 30 }
@@ -64,13 +76,27 @@ const ObjectDetection = () => {
       console.log('Camera stream obtained:', stream);
       console.log('Stream tracks:', stream.getTracks());
       
+      // Store the stream reference for later cleanup
+      streamRef.current = stream;
+      
       if (videoRef.current) {
+        console.log('Setting video source...');
         videoRef.current.srcObject = stream;
         
         // Add event listeners to debug video element issues
         videoRef.current.onloadedmetadata = () => {
-          console.log('Video metadata loaded');
-          videoRef.current?.play().catch(e => console.error('Error playing video:', e));
+          console.log('Video metadata loaded, dimensions:', 
+            videoRef.current?.videoWidth, 'x', videoRef.current?.videoHeight);
+          
+          if (videoRef.current) {
+            // Force play when metadata is loaded
+            videoRef.current.play()
+              .then(() => console.log('Video playback started successfully'))
+              .catch(e => {
+                console.error('Error playing video:', e);
+                setCameraError("Failed to start video playback");
+              });
+          }
         };
         
         videoRef.current.onplay = () => {
@@ -81,6 +107,7 @@ const ObjectDetection = () => {
         
         videoRef.current.onerror = (e) => {
           console.error('Video element error:', e);
+          setCameraError("Video element error occurred");
         };
         
         toast({
@@ -89,28 +116,39 @@ const ObjectDetection = () => {
         });
       } else {
         console.error('Video ref is not available');
+        throw new Error("Video element is not available");
       }
     } catch (error) {
       console.error('Error accessing camera:', error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown camera error";
+      setCameraError(errorMessage);
+      
       toast({
         title: "Camera Access Error",
-        description: error instanceof Error ? error.message : "Unknown camera error",
+        description: errorMessage,
         variant: "destructive",
       });
     }
   };
 
   const stopCamera = () => {
-    if (videoRef.current && videoRef.current.srcObject) {
-      const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
+    console.log('Stopping camera...');
+    
+    if (streamRef.current) {
+      const tracks = streamRef.current.getTracks();
       tracks.forEach(track => {
         console.log('Stopping track:', track.label);
         track.stop();
       });
-      videoRef.current.srcObject = null;
-      setIsStreaming(false);
-      console.log('Camera stopped');
+      streamRef.current = null;
     }
+    
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    
+    setIsStreaming(false);
+    console.log('Camera stopped');
   };
 
   const captureFrame = () => {
@@ -275,6 +313,9 @@ const ObjectDetection = () => {
                   <Camera className="h-12 w-12 mx-auto mb-2 opacity-50" />
                   <p>Camera feed will appear here</p>
                   <p className="text-sm mt-2">Click "Start Camera" to begin</p>
+                  {cameraError && (
+                    <p className="text-sm mt-2 text-red-500">{cameraError}</p>
+                  )}
                 </div>
               )}
               <canvas ref={canvasRef} className="hidden" />
@@ -408,6 +449,19 @@ const ObjectDetection = () => {
             </div>
           </CardContent>
         </Card>
+        
+        <div className="mt-8 p-4 border rounded-md bg-accent/5">
+          <div className="text-center">
+            <h3 className="text-lg font-medium">Developer Information</h3>
+            <p className="text-sm mt-2">VisionFit - An open source application</p>
+            <p className="text-sm mt-1">Created by Nhlanhla Percy Thwala</p>
+            <p className="text-sm text-muted-foreground mt-1">Ermelo, Mpumalanga, South Africa, 2332</p>
+            <div className="flex justify-center gap-4 mt-2">
+              <p className="text-sm">Email: nhlanhlathwala27@gmail.com</p>
+              <p className="text-sm">Contact: +27767255361</p>
+            </div>
+          </div>
+        </div>
       </div>
     </MainLayout>
   );
