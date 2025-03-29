@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import MainLayout from '@/components/MainLayout';
 import { Button } from '@/components/ui/button';
@@ -35,33 +34,67 @@ const ObjectDetection = () => {
 
   const startCamera = async () => {
     try {
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { facingMode: 'environment' } 
-        });
-        
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.play();
-          setIsStreaming(true);
-          
-          toast({
-            title: "Camera Started",
-            description: "Point camera at objects to detect them",
-          });
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error("Media devices API not supported");
+      }
+      
+      // Try getting all available cameras first
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoDevices = devices.filter(device => device.kind === 'videoinput');
+      console.log('Available video devices:', videoDevices);
+      
+      // Request camera with more options and higher resolution
+      const constraints = { 
+        audio: false,
+        video: { 
+          facingMode: 'environment',
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          frameRate: { ideal: 30 }
         }
-      } else {
+      };
+      
+      console.log('Requesting camera with constraints:', constraints);
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      
+      if (!stream) {
+        throw new Error("Failed to get media stream");
+      }
+      
+      console.log('Camera stream obtained:', stream);
+      console.log('Stream tracks:', stream.getTracks());
+      
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        
+        // Add event listeners to debug video element issues
+        videoRef.current.onloadedmetadata = () => {
+          console.log('Video metadata loaded');
+          videoRef.current?.play().catch(e => console.error('Error playing video:', e));
+        };
+        
+        videoRef.current.onplay = () => {
+          console.log('Video started playing, dimensions:', 
+            videoRef.current?.videoWidth, 'x', videoRef.current?.videoHeight);
+          setIsStreaming(true);
+        };
+        
+        videoRef.current.onerror = (e) => {
+          console.error('Video element error:', e);
+        };
+        
         toast({
-          title: "Camera Error",
-          description: "Your device doesn't support camera access",
-          variant: "destructive",
+          title: "Camera Started",
+          description: "Point camera at objects to detect them",
         });
+      } else {
+        console.error('Video ref is not available');
       }
     } catch (error) {
       console.error('Error accessing camera:', error);
       toast({
-        title: "Camera Access Denied",
-        description: "Please allow camera access to use this feature",
+        title: "Camera Access Error",
+        description: error instanceof Error ? error.message : "Unknown camera error",
         variant: "destructive",
       });
     }
@@ -70,29 +103,44 @@ const ObjectDetection = () => {
   const stopCamera = () => {
     if (videoRef.current && videoRef.current.srcObject) {
       const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
-      tracks.forEach(track => track.stop());
+      tracks.forEach(track => {
+        console.log('Stopping track:', track.label);
+        track.stop();
+      });
       videoRef.current.srcObject = null;
       setIsStreaming(false);
+      console.log('Camera stopped');
     }
   };
 
   const captureFrame = () => {
-    if (!isStreaming || !videoRef.current || !canvasRef.current) return;
+    if (!isStreaming || !videoRef.current || !canvasRef.current) {
+      console.log('Cannot capture: streaming=', isStreaming, 'videoRef=', !!videoRef.current, 'canvasRef=', !!canvasRef.current);
+      return;
+    }
     
     setIsProcessing(true);
     
     const context = canvasRef.current.getContext('2d');
     if (context && videoRef.current) {
+      const width = videoRef.current.videoWidth;
+      const height = videoRef.current.videoHeight;
+      
+      console.log('Capturing frame with dimensions:', width, 'x', height);
+      
       // Set canvas dimensions to match video
-      canvasRef.current.width = videoRef.current.videoWidth;
-      canvasRef.current.height = videoRef.current.videoHeight;
+      canvasRef.current.width = width;
+      canvasRef.current.height = height;
       
       // Draw the video frame to the canvas
-      context.drawImage(videoRef.current, 0, 0, canvasRef.current.width, canvasRef.current.height);
+      context.drawImage(videoRef.current, 0, 0, width, height);
       
       // In a real app, you would send this frame to an object detection API
       // For demo purposes, we'll simulate object detection
       simulateObjectDetection(activeTab);
+    } else {
+      console.error('Failed to get canvas context or video element');
+      setIsProcessing(false);
     }
   };
 
@@ -219,6 +267,7 @@ const ObjectDetection = () => {
                   ref={videoRef}
                   className="max-w-full max-h-[50vh] rounded-md"
                   playsInline
+                  autoPlay
                   muted
                 />
               ) : (
