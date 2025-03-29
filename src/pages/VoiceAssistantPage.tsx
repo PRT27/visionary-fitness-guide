@@ -96,8 +96,8 @@ const VoiceAssistantPage = () => {
       setIsListening(true);
       setTranscript('');
       
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      const recognition = new SpeechRecognition();
+      const SpeechRecognitionConstructor = window.SpeechRecognition || window.webkitSpeechRecognition;
+      const recognition = new SpeechRecognitionConstructor();
       
       recognition.lang = 'en-US';
       recognition.continuous = false;
@@ -151,8 +151,8 @@ const VoiceAssistantPage = () => {
     setIsListening(false);
     
     if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      const recognition = new SpeechRecognition();
+      const SpeechRecognitionConstructor = window.SpeechRecognition || window.webkitSpeechRecognition;
+      const recognition = new SpeechRecognitionConstructor();
       recognition.stop();
     }
     
